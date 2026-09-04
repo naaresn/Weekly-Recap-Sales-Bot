@@ -30,6 +30,7 @@ if not BOT_TOKEN:
 
 bot = telebot.TeleBot(BOT_TOKEN)
 
+
 def get_gspread_client():
     creds_b64 = os.environ.get("GOOGLE_SERVICE_ACCOUNT_JSON_BASE64")
     creds_json = os.environ.get("GOOGLE_SERVICE_ACCOUNT_JSON")
@@ -48,8 +49,9 @@ def get_gspread_client():
     )
     return gspread.oauth()
 
+
 def get_spreadsheet():
-    gc = gspread.oauth()
+    gc = get_gspread_client()
     return gc.open(SPREADSHEET_NAME)
 
 def get_sheet(sheet_name = "Transaksi"):
@@ -287,7 +289,9 @@ def rekap_mingguan():
 scheduler = BackgroundScheduler()
 scheduler.add_job(rekap_mingguan, "cron", day_of_week = "mon", hour = 13, minute = 52)
 
+
 class _HealthCheckHandler(BaseHTTPRequestHandler):
+    """Handler minimal untuk healthcheck. Tidak melayani trafik bisnis apa pun."""
 
     def do_GET(self):
         if self.path in ("/", "/health"):
@@ -300,6 +304,7 @@ class _HealthCheckHandler(BaseHTTPRequestHandler):
             self.end_headers()
 
     def log_message(self, format, *args):
+        # Bisukan default access log supaya tidak membanjiri log bot
         pass
 
 
@@ -311,6 +316,7 @@ def start_health_server():
 
 
 if __name__ == "__main__":
+    threading.Thread(target=start_health_server, daemon=True).start()
     scheduler.start()
     logger.info("Bot jalan")
     bot.infinity_polling()
