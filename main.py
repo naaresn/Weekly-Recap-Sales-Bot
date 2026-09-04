@@ -1,6 +1,10 @@
+import base64
+import json
 import gspread
 import logging
+import threading
 from datetime import datetime
+from http.server import BaseHTTPRequestHandler, HTTPServer
 import os
 import telebot
 import pandas as pd
@@ -26,6 +30,23 @@ if not BOT_TOKEN:
 
 bot = telebot.TeleBot(BOT_TOKEN)
 
+def get_gspread_client():
+    creds_b64 = os.environ.get("GOOGLE_SERVICE_ACCOUNT_JSON_BASE64")
+    creds_json = os.environ.get("GOOGLE_SERVICE_ACCOUNT_JSON")
+
+    if creds_b64:
+        creds_dict = json.loads(base64.b64decode(creds_b64).decode("utf-8"))
+        return gspread.service_account_from_dict(creds_dict)
+
+    if creds_json:
+        creds_dict = json.loads(creds_json)
+        return gspread.service_account_from_dict(creds_dict)
+
+    logger.warning(
+        "GOOGLE_SERVICE_ACCOUNT_JSON(_BASE64) tidak diset, fallback ke OAuth interaktif "
+        "(hanya untuk development lokal, tidak akan jalan di server/container)."
+    )
+    return gspread.oauth()
 
 def get_spreadsheet():
     gc = gspread.oauth()
@@ -266,6 +287,27 @@ def rekap_mingguan():
 scheduler = BackgroundScheduler()
 scheduler.add_job(rekap_mingguan, "cron", day_of_week = "mon", hour = 13, minute = 52)
 
+class _HealthCheckHandler(BaseHTTPRequestHandler):
+
+    def do_GET(self):
+        if self.path in ("/", "/health"):
+            self.send_response(200)
+            self.send_header("Content-Type", "text/plain")
+            self.end_headers()
+            self.wfile.write(b"OK")
+        else:
+            self.send_response(404)
+            self.end_headers()
+
+    def log_message(self, format, *args):
+        pass
+
+
+def start_health_server():
+    port = int(os.environ.get("PORT", 8080))
+    server = HTTPServer(("0.0.0.0", port), _HealthCheckHandler)
+    logger.info("Health check server listening on port %s", port)
+    server.serve_forever()
 
 
 if __name__ == "__main__":
