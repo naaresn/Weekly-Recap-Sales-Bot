@@ -1,11 +1,9 @@
 .git
 .gitignore
 .env
-.env.example
 __pycache__/
 *.pyc
 .vscode/
 credentials.json
 token.json
-RAILWAY_SETUP.md
 README.md
