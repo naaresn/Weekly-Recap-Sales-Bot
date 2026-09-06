@@ -59,6 +59,10 @@ def get_sheet(sheet_name = "Transaksi"):
     spreadsheet = get_spreadsheet()
     return spreadsheet.worksheet(sheet_name)
 
+def normalize_dict(d):
+    """Normalizes dict keys: lowercase and strip whitespace."""
+    return {str(k).strip().lower(): v for k, v in d.items()}
+
 def ensure_header(sheet):
     values = sheet.get_all_values()
     header = ["Tanggal", "Produk", "Qty", "Harga Satuan", "Total", "Stok Sisa"]
@@ -80,15 +84,20 @@ def get_data():
 def update_stock(produk, qty_terjual):
     worksheet = get_sheet("Master Produk")
     records = worksheet.get_all_records()
+    if records:
+        logger.info("DEBUG: Raw keys in first record of Master Produk: %s", list(records[0].keys()))
 
-    row_index = next((i for i, item in enumerate(records) if str(item.get("Produk")).strip().lower() == produk.lower()), None)
+    normalized_records = [normalize_dict(r) for r in records]
+    
+    row_index = next((i for i, item in enumerate(normalized_records) if item.get("produk", "").strip().lower() == produk.lower()), None)
 
     if row_index is None:
         logger.warning("Produk '%s' tidak ditemukan di Master Produk, stok tidak diupdate", produk)
         return None
  
     row_number = row_index + 2
-    stok_sekarang = records[row_index].get("Stok Sisa", 0)
+    # Lookup using normalized key
+    stok_sekarang = normalized_records[row_index].get("stok sisa", 0)
  
     try:
         stok_sekarang = int(stok_sekarang)
@@ -124,10 +133,12 @@ def handler_jual(message):
         try:
             sheet_master_produk = get_sheet("Master Produk")
             master_records_produk = sheet_master_produk.get_all_records()
-            check_produk = next((item for item in master_records_produk if str(item.get("Produk")).strip().lower() == produk.lower()), None)
+            
+            normalized_master = [normalize_dict(r) for r in master_records_produk]
+            check_produk = next((item for item in normalized_master if item.get("produk", "").strip().lower() == produk.lower()), None)
             
             if check_produk is not None:
-                stok_tersedia = int(check_produk.get("Stok Sisa", 0) or 0)
+                stok_tersedia = int(check_produk.get("stok sisa", 0) or 0)
                 if qty > stok_tersedia:
                     bot.reply_to(message, f"Stok {produk} tersisa {stok_tersedia}, tidak bisa menjual {qty}")
                     return
