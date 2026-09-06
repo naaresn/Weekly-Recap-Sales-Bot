@@ -1,4 +1,5 @@
 import base64
+import io
 import json
 import gspread
 import logging
@@ -275,6 +276,9 @@ def rekap_mingguan():
     if not OWNER_CHAT_ID:
         logger.warning("OWNER_CHAT_ID belum di-set, skip rekap otomatis")
         return
+    
+    df = None
+    rekap = None
     try:
         df = get_data()
         rekap = compute_recap(df)
@@ -284,6 +288,44 @@ def rekap_mingguan():
         logger.info("Rekap mingguan terkirim ke chat_id=%s", OWNER_CHAT_ID)
     except Exception:
         logger.exception("Gagal mengirim rekap mingguan")
+
+    # Pembuatan & pengiriman Excel dibungkus try/except terpisah
+    if df is not None and rekap is not None:
+        try:
+            excel_buffer = io.BytesIO()
+            with pd.ExcelWriter(excel_buffer, engine="openpyxl") as writer:
+                # Sheet "Transaksi": seluruh data mentah dari get_data()
+                df.to_excel(writer, sheet_name="Transaksi", index=False)
+                
+                # Sheet "Ringkasan": total omset, total item terjual, jumlah transaksi
+                df_ringkasan = pd.DataFrame([
+                    {"Metrik": "Total Omset", "Nilai": rekap["total_omset"]},
+                    {"Metrik": "Total Item Terjual", "Nilai": rekap["total_item_terjual"]},
+                    {"Metrik": "Jumlah Transaksi", "Nilai": rekap["jumlah_transaksi"]}
+                ])
+                df_ringkasan.to_excel(writer, sheet_name="Ringkasan", index=False)
+                
+                # Sheet "Produk Terlaris": top produk dari rekap["produk_terlaris"]
+                df_terlaris = pd.DataFrame({
+                    "Produk": rekap["produk_terlaris"].index,
+                    "Jumlah Terjual": rekap["produk_terlaris"].values
+                })
+                df_terlaris.to_excel(writer, sheet_name="Produk Terlaris", index=False)
+                
+                # Sheet "Stok Menipis": hanya dibuat kalau rekap["stok_menipis"] tidak kosong
+                if not rekap["stok_menipis"].empty:
+                    df_stok = pd.DataFrame({
+                        "Produk": rekap["stok_menipis"].index,
+                        "Sisa Stok": rekap["stok_menipis"].values
+                    })
+                    df_stok.to_excel(writer, sheet_name="Stok Menipis", index=False)
+            
+            excel_buffer.seek(0)
+            nama_file = f"rekap_penjualan_{datetime.now().strftime('%Y%m%d')}.xlsx"
+            bot.send_document(OWNER_CHAT_ID, (nama_file, excel_buffer))
+            logger.info("Excel rekap mingguan terkirim ke chat_id=%s", OWNER_CHAT_ID)
+        except Exception:
+            logger.exception("Gagal membuat atau mengirim file Excel rekap mingguan")
 
 
 scheduler = BackgroundScheduler()
