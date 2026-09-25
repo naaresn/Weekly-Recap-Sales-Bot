@@ -5,6 +5,7 @@ import gspread
 import logging
 import threading
 from datetime import datetime
+from zoneinfo import ZoneInfo
 from http.server import BaseHTTPRequestHandler, HTTPServer
 import os
 import telebot
@@ -20,6 +21,8 @@ logging.basicConfig(level = logging.INFO,
                     format = "%(asctime)s [%(levelname)s] %(message)s",)
 
 logger = logging.getLogger(__name__)
+
+JAKARTA_TZ = ZoneInfo("Asia/Jakarta")
 
 BOT_TOKEN = os.environ.get("API_TELEGRAM_BOT")
 SPREADSHEET_NAME = os.environ.get("SPREADSHEET_NAME", "Data Penjualan")
@@ -165,7 +168,7 @@ def handler_jual(message):
                 return
             
         total = qty * harga
-        tanggal = datetime.now().strftime("%Y-%m-%d %H:%M")
+        tanggal = datetime.now(JAKARTA_TZ).strftime("%Y-%m-%d %H:%M")
                                  
         next_row = len(sheet_transaksi.get_all_values()) + 1
         formula_stok_sisa = f"=VLOOKUP(B{next_row}, 'Master Produk'!A:D, 4, FALSE)"
@@ -327,14 +330,14 @@ def rekap_mingguan():
                     df_stok.to_excel(writer, sheet_name="Stok Menipis", index=False)
             
             excel_buffer.seek(0)
-            nama_file = f"rekap_penjualan_{datetime.now().strftime('%Y%m%d')}.xlsx"
+            nama_file = f"rekap_penjualan_{datetime.now(JAKARTA_TZ).strftime('%Y%m%d')}.xlsx"
             bot.send_document(OWNER_CHAT_ID, (nama_file, excel_buffer))
             logger.info("Excel rekap mingguan terkirim ke chat_id=%s", OWNER_CHAT_ID)
         except Exception:
             logger.exception("Gagal membuat atau mengirim file Excel rekap mingguan")
 
 
-scheduler = BackgroundScheduler()
+scheduler = BackgroundScheduler(timezone=JAKARTA_TZ)
 scheduler.add_job(rekap_mingguan, "cron", day_of_week = "mon", hour = 13, minute = 52)
 
 
